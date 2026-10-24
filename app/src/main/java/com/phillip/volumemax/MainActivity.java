@@ -27,14 +27,26 @@ public class MainActivity extends Activity {
         public void onStartTrackingTouch(SeekBar sb){} public void onStopTrackingTouch(SeekBar sb){} }); }
     root.addView(text("Boost (beyond normal max)",22,0xFFFF8A65));
     boostLbl = text("Boost: off",18,Color.WHITE); root.addView(boostLbl);
-    SeekBar boost=new SeekBar(this); boost.setMax(100); boost.setProgress(BoostService.gainMb/20); root.addView(boost,new LinearLayout.LayoutParams(-1,dp(48)));
+    SeekBar boost=new SeekBar(this); boost.setMax(100); boost.setProgress(BoostService.prefs(this).getInt("gain",0)/20); boostLbl.setText(boost.getProgress()==0?"Boost: off":"Boost: +"+boost.getProgress()+"%"); root.addView(boost,new LinearLayout.LayoutParams(-1,dp(48)));
     boost.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){
       public void onProgressChanged(SeekBar sb,int p,boolean u){ boostLbl.setText(p==0?"Boost: off":"Boost: +"+p+"%"); }
-      public void onStartTrackingTouch(SeekBar sb){} public void onStopTrackingTouch(SeekBar sb){ setBoost(sb.getProgress()*20); } });
-    root.addView(text("Boost works on most phones, but some (including some Motorola models) ignore boosts on the whole-phone output. If the app says it isn't supported, the boost can't work on your phone. Boost runs as a notification so it keeps working in other apps. Tap \"Stop boost\" in the notification to turn it off.",13,0xFF9E9E9E));
+      public void onStartTrackingTouch(SeekBar sb){} public void onStopTrackingTouch(SeekBar sb){ BoostService.prefs(MainActivity.this).edit().putInt("gain",sb.getProgress()*20).apply(); sync(); } });
+    root.addView(text("Bass",22,0xFFFF8A65));
+    final TextView bassLbl = text("",18,Color.WHITE); root.addView(bassLbl);
+    SeekBar bass=new SeekBar(this); bass.setMax(100); bass.setProgress(BoostService.prefs(this).getInt("bass",0)); root.addView(bass,new LinearLayout.LayoutParams(-1,dp(48)));
+    bassLbl.setText("Bass: "+(bass.getProgress()==0?"off":bass.getProgress()+"%"));
+    bass.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){
+      public void onProgressChanged(SeekBar sb,int p,boolean u){ bassLbl.setText("Bass: "+(p==0?"off":p+"%")); }
+      public void onStartTrackingTouch(SeekBar sb){} public void onStopTrackingTouch(SeekBar sb){ BoostService.prefs(MainActivity.this).edit().putInt("bass",sb.getProgress()).apply(); sync(); } });
+    final Button warm = new Button(this); warm.setTextSize(22); warm.setTextColor(Color.WHITE);
+    LinearLayout.LayoutParams wl=new LinearLayout.LayoutParams(-1,dp(80)); wl.setMargins(0,dp(10),0,dp(4)); root.addView(warm,wl);
+    styleWarm(warm);
+    warm.setOnClickListener(v -> { boolean on=!BoostService.prefs(this).getBoolean("warm",false); BoostService.prefs(this).edit().putBoolean("warm",on).apply(); styleWarm(warm); sync(); });
+    root.addView(text("Warm adds a gentle lift to the lows (60-250 Hz), softens harsh highs (4-8 kHz) and uses a limiter so the bass stays round and doesn't boom or distort.",13,0xFF9E9E9E));
+    root.addView(text("Boost and bass work on most phones, but some (including some Motorola models) ignore effects on the whole-phone output. If the app says one isn't supported, that effect can't work on your phone. They run as a notification so they keep working in other apps. Tap \"Stop all\" in the notification to turn everything off.",13,0xFF9E9E9E));
     setContentView(sv);
     if (Build.VERSION.SDK_INT>=33 && checkSelfPermission("android.permission.POST_NOTIFICATIONS")!=0) requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"},1);
-    if (!BoostService.apply()) status.setText("Boost isn't supported on this phone ("+BoostService.lastError+"). Volume buttons still work."); else if(!BoostService.running) BoostService.release();
+    if (BoostService.anyOn(this)) sync();
   }
   protected void onResume(){ super.onResume(); for(int i=0;i<5;i++){ bars[i].setProgress(am.getStreamVolume(streams[i])); updateLbl(i);} }
   void updateLbl(int i){ lbls[i].setText(names[i]+": "+am.getStreamVolume(streams[i])+" / "+am.getStreamMaxVolume(streams[i])); }
@@ -46,10 +58,16 @@ public class MainActivity extends Activity {
     status.setText("Maxed what I could. Do Not Disturb blocked: "+skipped.substring(0,skipped.length()-2)+". Tap here to allow access, or turn off Do Not Disturb.");
     status.setOnClickListener(v -> startActivity(new Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS)));
   }
-  void setBoost(int mb){
+  void styleWarm(Button w){ boolean on=BoostService.prefs(this).getBoolean("warm",false);
+    w.setText(on?"WARM: ON ✔":"WARM: OFF"); GradientDrawable g=new GradientDrawable(); g.setCornerRadius(dp(20)); g.setColor(on?0xFFE65100:0xFF2A2D35); w.setBackground(g); }
+  void sync(){
     Intent i=new Intent(this,BoostService.class);
-    if(mb==0){ startService(i.setAction("STOP")); status.setText("Boost off"); return; }
-    startForegroundService(i.putExtra("gain",mb));
-    new Handler(Looper.getMainLooper()).postDelayed(() -> status.setText(BoostService.lastError==null?"Boost on: +"+(mb/20)+"%":"Boost not supported on this phone: "+BoostService.lastError),500);
+    if(!BoostService.anyOn(this)){ startService(i); status.setText("Boost, bass and warm are off"); return; }
+    startForegroundService(i);
+    new Handler(Looper.getMainLooper()).postDelayed(() -> { StringBuilder m=new StringBuilder();
+      if(BoostService.errBoost!=null) m.append("Boost unsupported on this phone. ");
+      if(BoostService.errBass!=null) m.append("Bass unsupported on this phone. ");
+      if(BoostService.errWarm!=null) m.append("Warm unsupported on this phone. ");
+      status.setText(m.length()==0?"Effects on ✔":m.toString().trim()); },700);
   }
 }
