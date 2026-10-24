@@ -1,0 +1,6 @@
+release.jks
+.kspass
+build/
+app/build/
+.gradle/
+local.properties
