@@ -38,12 +38,15 @@ public class MainActivity extends Activity {
     bass.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){
       public void onProgressChanged(SeekBar sb,int p,boolean u){ bassLbl.setText("Bass: "+(p==0?"off":p+"%")); }
       public void onStartTrackingTouch(SeekBar sb){} public void onStopTrackingTouch(SeekBar sb){ BoostService.prefs(MainActivity.this).edit().putInt("bass",sb.getProgress()).apply(); sync(); } });
-    final Button warm = new Button(this); warm.setTextSize(22); warm.setTextColor(Color.WHITE);
-    LinearLayout.LayoutParams wl=new LinearLayout.LayoutParams(-1,dp(80)); wl.setMargins(0,dp(10),0,dp(4)); root.addView(warm,wl);
-    styleWarm(warm);
-    warm.setOnClickListener(v -> { boolean on=!BoostService.prefs(this).getBoolean("warm",false); BoostService.prefs(this).edit().putBoolean("warm",on).apply(); styleWarm(warm); sync(); });
-    root.addView(text("Warm adds a gentle lift to the lows (60-250 Hz), softens harsh highs (4-8 kHz) and uses a limiter so the bass stays round and doesn't boom or distort.",13,0xFF9E9E9E));
-    root.addView(text("Boost and bass work on most phones, but some (including some Motorola models) ignore effects on the whole-phone output. If the app says one isn't supported, that effect can't work on your phone. They run as a notification so they keep working in other apps. Tap \"Stop all\" in the notification to turn everything off.",13,0xFF9E9E9E));
+    sliderDb("Mid (clarity, 1-3 kHz)","mid"); sliderDb("Treble (sparkle, 6 kHz+)","treble");
+    root.addView(text("Sound preset",22,0xFFFF8A65));
+    LinearLayout row=new LinearLayout(this); root.addView(row,new LinearLayout.LayoutParams(-1,dp(76)));
+    for(int pi=0;pi<3;pi++){ final int idx=pi; Button pb=new Button(this); pb.setText(pi==2?"Warm & Crisp ★":BoostService.PRESETS[pi]); pb.setTextSize(15); pb.setTextColor(Color.WHITE); pb.setAllCaps(false);
+      LinearLayout.LayoutParams bl=new LinearLayout.LayoutParams(0,-1,1f); bl.setMargins(dp(3),0,dp(3),0); row.addView(pb,bl); presetBtns[pi]=pb;
+      pb.setOnClickListener(v -> { BoostService.prefs(this).edit().putInt("preset",idx).apply(); stylePresets(); sync(); }); }
+    stylePresets();
+    root.addView(text("★ Recommended. Warm & Crisp gives a warm, round low end, cuts the mud around 250-400 Hz, and adds clear mids and crisp highs that aren't harsh. Warm is softer and darker. The Mid and Treble sliders adjust on top of the preset you pick, and a limiter with built-in headroom keeps it from distorting.",13,0xFF9E9E9E));
+    root.addView(text("Boost, bass and EQ work on most phones, but some (including some Motorola models) ignore effects on the whole-phone output. If the app says one isn't supported, that effect can't work on your phone. They run as a notification so they keep working in other apps. Tap \"Stop all\" in the notification to turn everything off.",13,0xFF9E9E9E));
     setContentView(sv);
     if (Build.VERSION.SDK_INT>=33 && checkSelfPermission("android.permission.POST_NOTIFICATIONS")!=0) requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"},1);
     if (BoostService.anyOn(this)) sync();
@@ -58,16 +61,23 @@ public class MainActivity extends Activity {
     status.setText("Maxed what I could. Do Not Disturb blocked: "+skipped.substring(0,skipped.length()-2)+". Tap here to allow access, or turn off Do Not Disturb.");
     status.setOnClickListener(v -> startActivity(new Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS)));
   }
-  void styleWarm(Button w){ boolean on=BoostService.prefs(this).getBoolean("warm",false);
-    w.setText(on?"WARM: ON ✔":"WARM: OFF"); GradientDrawable g=new GradientDrawable(); g.setCornerRadius(dp(20)); g.setColor(on?0xFFE65100:0xFF2A2D35); w.setBackground(g); }
+  Button[] presetBtns=new Button[3];
+  void stylePresets(){ int cur=BoostService.preset(this); for(int i=0;i<3;i++){ GradientDrawable g=new GradientDrawable(); g.setCornerRadius(dp(18)); g.setColor(i==cur?0xFFE65100:0xFF2A2D35); presetBtns[i].setBackground(g);} }
+  void sliderDb(String name,final String key){
+    final TextView l=text("",18,Color.WHITE); root.addView(l); SeekBar s=new SeekBar(this); s.setMax(12); s.setProgress(BoostService.prefs(this).getInt(key,0)+6);
+    root.addView(s,new LinearLayout.LayoutParams(-1,dp(48)));
+    SeekBar.OnSeekBarChangeListener ls=new SeekBar.OnSeekBarChangeListener(){
+      public void onProgressChanged(SeekBar sb,int p,boolean u){ int d=p-6; l.setText(name+": "+(d>0?"+":"")+d+" dB"); }
+      public void onStartTrackingTouch(SeekBar sb){} public void onStopTrackingTouch(SeekBar sb){ BoostService.prefs(MainActivity.this).edit().putInt(key,sb.getProgress()-6).apply(); sync(); } };
+    s.setOnSeekBarChangeListener(ls); ls.onProgressChanged(s,s.getProgress(),false); }
   void sync(){
     Intent i=new Intent(this,BoostService.class);
-    if(!BoostService.anyOn(this)){ startService(i); status.setText("Boost, bass and warm are off"); return; }
+    if(!BoostService.anyOn(this)){ startService(i); status.setText("All effects are off"); return; }
     startForegroundService(i);
     new Handler(Looper.getMainLooper()).postDelayed(() -> { StringBuilder m=new StringBuilder();
       if(BoostService.errBoost!=null) m.append("Boost unsupported on this phone. ");
       if(BoostService.errBass!=null) m.append("Bass unsupported on this phone. ");
-      if(BoostService.errWarm!=null) m.append("Warm unsupported on this phone. ");
+      if(BoostService.errWarm!=null) m.append("EQ (Mid, Treble and presets) unsupported on this phone. ");
       status.setText(m.length()==0?"Effects on ✔":m.toString().trim()); },700);
   }
 }
